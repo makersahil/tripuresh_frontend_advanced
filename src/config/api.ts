@@ -42,3 +42,22 @@ export async function getListOk<T>(
   }
   throw new Error((res.data as any)?.message || 'Request failed')
 }
+
+
+import { emitAuthLogout } from '@/lib/authBus'
+
+http.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status
+    if (status === 401) {
+      emitAuthLogout()
+      // redirect to login without importing react-router
+      if (typeof window !== 'undefined') {
+        const atLogin = window.location.pathname.startsWith('/admin/login')
+        if (!atLogin) window.location.href = '/admin/login'
+      }
+    }
+    return Promise.reject(err)
+  }
+)

@@ -1,5 +1,5 @@
 import { Route, Routes } from "react-router-dom"
-
+import { AuthProvider } from '@/features/auth/useAuth'
 import Home from "../pages/Home"
 import About from "../pages/About"
 import Contact from "../pages/Contact"
@@ -29,37 +29,39 @@ import AdminProfilePage from "../admin/profile/AdminProfilePage"
 
 export default function RoutesIndex() {
   return (
-    <Routes>
-      {/* Public */}
-      <Route path="/" element={<Home />} />
-      <Route path="/about" element={<About />} />
-      <Route path="/contact" element={<Contact />} />
+      <AuthProvider>
+        <Routes>
+          {/* Public */}
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
 
-      <Route path="/articles" element={<ArticlesPage />} />
-      <Route path="/articles/:slug" element={<ArticleDetail />} />
-      <Route path="/publications" element={<PublicationsPage />} />
-      <Route path="/publications/:slug" element={<PublicationDetail />} />
-      <Route path="/grants" element={<GrantsPage />} />
-      <Route path="/grants/:slug" element={<GrantDetail />} />
-      <Route path="/patents" element={<PatentsPage />} />
-      <Route path="/patents/:slug" element={<PatentDetail />} />
-      <Route path="/certifications" element={<CertificationsPage />} />
-      <Route path="/certifications/:slug" element={<CertificationDetail />} />
-      <Route path="/search" element={<SearchPage />} />
+          <Route path="/articles" element={<ArticlesPage />} />
+          <Route path="/articles/:slug" element={<ArticleDetail />} />
+          <Route path="/publications" element={<PublicationsPage />} />
+          <Route path="/publications/:slug" element={<PublicationDetail />} />
+          <Route path="/grants" element={<GrantsPage />} />
+          <Route path="/grants/:slug" element={<GrantDetail />} />
+          <Route path="/patents" element={<PatentsPage />} />
+          <Route path="/patents/:slug" element={<PatentDetail />} />
+          <Route path="/certifications" element={<CertificationsPage />} />
+          <Route path="/certifications/:slug" element={<CertificationDetail />} />
+          <Route path="/search" element={<SearchPage />} />
 
-      {/* Admin */}
-      <Route path="/admin/login" element={<LoginPage />} />
-      <Route path="/admin" element={<AdminShell />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="articles" element={<AdminArticlesPage />} />
-        <Route path="publications" element={<AdminPublicationsPage />} />
-        <Route path="grants" element={<AdminGrantsPage />} />
-        <Route path="patents" element={<AdminPatentsPage />} />
-        <Route path="certifications" element={<AdminCertificationsPage />} />
-        <Route path="profile" element={<AdminProfilePage />} />
-      </Route>
+          {/* Admin */}
+          <Route path="/admin/login" element={<LoginPage />} />
+          <Route path="/admin" element={<AdminShell />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="articles" element={<AdminArticlesPage />} />
+            <Route path="publications" element={<AdminPublicationsPage />} />
+            <Route path="grants" element={<AdminGrantsPage />} />
+            <Route path="patents" element={<AdminPatentsPage />} />
+            <Route path="certifications" element={<AdminCertificationsPage />} />
+            <Route path="profile" element={<AdminProfilePage />} />
+          </Route>
 
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthProvider>
   )
 }

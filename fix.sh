@@ -1,196 +1,264 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- ensure alias works in Vite + TS ---
-if [ -f vite.config.ts ]; then
-  cat > vite.config.ts <<'TS'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'node:path'
+# directories
+mkdir -p src/features/auth
+mkdir -p src/routes/guards
+mkdir -p src/pages/admin
+mkdir -p src/lib
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-})
-TS
-fi
-
-if [ -f tsconfig.json ]; then
-  node - <<'JS'
-const fs = require('fs');
-const p = 'tsconfig.json';
-const j = JSON.parse(fs.readFileSync(p,'utf8'));
-j.compilerOptions = j.compilerOptions || {};
-j.compilerOptions.baseUrl = j.compilerOptions.baseUrl || '.';
-j.compilerOptions.paths = j.compilerOptions.paths || {};
-j.compilerOptions.paths['@/*'] = ['src/*'];
-fs.writeFileSync(p, JSON.stringify(j, null, 2));
-console.log('Updated tsconfig.json with @ alias');
-JS
-fi
-
-# --- folders ---
-mkdir -p src/components/feedback
-mkdir -p src/components/ui
-mkdir -p src/config
-mkdir -p src/hooks
-
-# --- env helper (reads Vite env) ---
-cat > src/config/env.ts <<'TS'
-export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ??
-  (typeof window !== 'undefined' ? `${window.location.origin}/api/v1` : '/api/v1');
+# ---------- lib: a tiny event bus to broadcast auth/logout ----------
+cat > src/lib/authBus.ts <<'TS'
+type Handler = () => void
+const listeners = new Set<Handler>()
+export function onAuthLogout(h: Handler) { listeners.add(h); return () => listeners.delete(h) }
+export function emitAuthLogout() { for (const h of [...listeners]) try { h() } catch {} }
 TS
 
-# --- axios helpers (no inline "as" casts in object literal) ---
-cat > src/config/api.ts <<'TS'
-import axios from 'axios'
-import { API_BASE } from './env'
+# ---------- types (lightweight; merge with yours if you already have) ----------
+cat > src/lib/authTypes.ts <<'TS'
+export type Role = 'admin' | 'user'
+export type User = {
+  id: string
+  email: string
+  name?: string
+  role?: Role
+}
+TS
 
-export type Envelope<T> = { success: boolean; data: T; meta?: any; message?: string }
-export type EnvelopeOk<T> = { success: true; data: T; meta?: any }
+# ---------- API: login + /auth/me ----------
+cat > src/features/auth/api.ts <<'TS'
+import { http } from '@/config/api'
+import type { User } from '@/lib/authTypes'
 
-export const http = axios.create({
-  baseURL: API_BASE,
-  timeout: 15000,
-})
+type LoginBody = { email: string; password: string }
+type LoginResp = { success: true; data: { token: string } }
 
-http.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem('admin_token')
-  if (token && cfg.url?.startsWith('/')) {
-    cfg.headers = cfg.headers ?? {}
-    ;(cfg.headers as any).Authorization = `Bearer ${token}`
-  }
-  return cfg
-})
-
-export async function getOk<T>(url: string, params?: any): Promise<EnvelopeOk<T>> {
-  const res = await http.get<Envelope<T>>(url, { params })
-  if (res.data?.success) return res.data as EnvelopeOk<T>
-  throw new Error((res.data as any)?.message || 'Request failed')
+export async function login(data: LoginBody): Promise<string> {
+  const res = await http.post<LoginResp>('/auth/login', data)
+  if (res.data?.success && res.data.data?.token) return res.data.data.token
+  throw new Error('Invalid login response')
 }
 
-/** Returns items + pagination meta */
-export async function getListOk<T>(
-  url: string,
-  params?: any
-): Promise<{ items: T[]; meta: { page: number; pageSize: number; total: number; pages: number } }> {
-  const res = await http.get<Envelope<T[]>>(url, { params })
-  if ((res.data as any)?.success) {
-    const items = ((res.data as any).data ?? []) as T[]
-    const meta = (res.data as any).meta ?? {
-      page: 1,
-      pageSize: items.length,
-      total: items.length,
-      pages: 1,
+export async function me(): Promise<User> {
+  const res = await http.get<{ success: true; data: User }>('/auth/me')
+  if (res.data?.success) return res.data.data
+  throw new Error('Failed to load profile')
+}
+TS
+
+# ---------- Auth context + hook ----------
+cat > src/features/auth/useAuth.tsx <<'TSX'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { login as apiLogin, me } from './api'
+import type { User, Role } from '@/lib/authTypes'
+import { onAuthLogout } from '@/lib/authBus'
+
+type AuthState = {
+  user: User | null
+  token: string | null
+  loading: boolean
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
+  hasRole: (role: Role) => boolean
+  refreshMe: () => Promise<void>
+}
+
+const AuthCtx = createContext<AuthState | null>(null)
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('admin_token'))
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Load current user if token exists
+  useEffect(() => {
+    let active = true
+    async function boot() {
+      if (!token) { setUser(null); setLoading(false); return }
+      try {
+        setLoading(true)
+        const u = await me()
+        if (active) setUser(u)
+      } catch {
+        // invalid token -> clear
+        if (active) { localStorage.removeItem('admin_token'); setToken(null); setUser(null) }
+      } finally {
+        if (active) setLoading(false)
+      }
     }
-    return { items, meta }
+    boot()
+    return () => { active = false }
+  }, [token])
+
+  // Respond to global 401 (from axios interceptor)
+  useEffect(() => onAuthLogout(() => {
+    localStorage.removeItem('admin_token')
+    setToken(null)
+    setUser(null)
+  }), [])
+
+  async function login(email: string, password: string) {
+    const t = await apiLogin({ email, password })
+    localStorage.setItem('admin_token', t)
+    setToken(t)
+    const u = await me()
+    setUser(u)
   }
-  throw new Error((res.data as any)?.message || 'Request failed')
+
+  function logout() {
+    localStorage.removeItem('admin_token')
+    setToken(null)
+    setUser(null)
+  }
+
+  async function refreshMe() {
+    const u = await me()
+    setUser(u)
+  }
+
+  function hasRole(role: Role) {
+    return user?.role === role
+  }
+
+  const value = useMemo<AuthState>(() => ({
+    user, token, loading, login, logout, hasRole, refreshMe
+  }), [user, token, loading])
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthCtx)
+  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>')
+  return ctx
+}
+TSX
+
+# ---------- Role helper ----------
+cat > src/features/auth/useRole.ts <<'TS'
+import { useAuth } from './useAuth'
+import type { Role } from '@/lib/authTypes'
+export function useRole(role: Role) {
+  const { user } = useAuth()
+  return user?.role === role
 }
 TS
 
-# --- feedback components used by your pages ---
-cat > src/components/feedback/Loader.tsx <<'TSX'
-export default function Loader() {
+# ---------- RequireAuth guard ----------
+cat > src/routes/guards/RequireAuth.tsx <<'TSX'
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from '@/features/auth/useAuth'
+
+export default function RequireAuth({ children }: { children: JSX.Element }) {
+  const { token, loading } = useAuth()
+  const loc = useLocation()
+  if (loading) return <div className="container py-12 text-center text-sm text-gray-600">Checking session…</div>
+  if (!token) return <Navigate to="/admin/login" replace state={{ from: loc }} />
+  return children
+}
+TSX
+
+# ---------- Minimal Admin pages ----------
+cat > src/pages/admin/LoginPage.tsx <<'TSX'
+import { FormEvent, useState } from 'react'
+import { useAuth } from '@/features/auth/useAuth'
+import { useLocation, useNavigate } from 'react-router-dom'
+import Input from '@/components/ui/input'
+
+export default function LoginPage() {
+  const { login } = useAuth()
+  const nav = useNavigate()
+  const loc = useLocation() as any
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    try {
+      setBusy(true); setError(null)
+      await login(email, password)
+      const to = loc?.state?.from?.pathname || '/admin'
+      nav(to, { replace: true })
+    } catch (err: any) {
+      setError(err?.message || 'Login failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <div className="container py-12 text-center text-sm text-gray-600">
-      Loading…
-    </div>
+    <section className="container py-12 max-w-md">
+      <h1 className="text-2xl font-bold mb-4">Admin Login</h1>
+      <form className="grid gap-3" onSubmit={onSubmit}>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium">Email</span>
+          <Input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@example.com" />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium">Password</span>
+          <Input type="password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
+        </label>
+        {error && <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+        <button
+          disabled={busy}
+          className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium bg-primary text-white disabled:opacity-50"
+        >
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </section>
   )
 }
 TSX
 
-cat > src/components/feedback/ErrorBlock.tsx <<'TSX'
-export default function ErrorBlock({ message }: { message: string }) {
+cat > src/pages/admin/DashboardPage.tsx <<'TSX'
+import { useAuth } from '@/features/auth/useAuth'
+export default function DashboardPage() {
+  const { user, logout } = useAuth()
   return (
-    <div role="alert" className="container py-8">
-      <div className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800">
-        {message || 'Something went wrong.'}
-      </div>
-    </div>
+    <section className="container py-10 grid gap-4">
+      <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+      <div className="text-gray-700">Welcome{user?.name ? `, ${user.name}` : ''}!</div>
+      <button onClick={logout} className="w-max rounded-2xl border border-border px-4 py-2 text-sm">Logout</button>
+    </section>
   )
 }
 TSX
 
-cat > src/components/feedback/EmptyState.tsx <<'TSX'
-export default function EmptyState({
-  title = 'Nothing here yet',
-  hint,
-}: { title?: string; hint?: string }) {
-  return (
-    <div className="container py-12 text-center">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      {hint ? <p className="text-gray-600 mt-1">{hint}</p> : null}
-    </div>
-  )
-}
-TSX
+# ---------- axios response interceptor for 401 ----------
+# (append-safe patch: re-write config/api.ts with response interceptor if not present)
+node - <<'JS'
+const fs = require('fs'), p='src/config/api.ts';
+let s = fs.readFileSync(p,'utf8');
+if (!s.includes('http.interceptors.response.use')) {
+  s += `
 
-cat > src/components/feedback/SkeletonList.tsx <<'TSX'
-export default function SkeletonList({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="container py-8 grid gap-4">
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-20 rounded-2xl bg-muted animate-pulse" />
-      ))}
-    </div>
-  )
-}
-TSX
+import { emitAuthLogout } from '@/lib/authBus'
 
-# --- tiny UI stubs in case your project doesn't have shadcn/ui ---
-cat > src/components/ui/input.tsx <<'TSX'
-import * as React from 'react'
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className = '', ...props }, ref) => (
-    <input ref={ref} className={`h-10 w-full rounded-xl border border-border px-3 ${className}`} {...props} />
-  )
+http.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status
+    if (status === 401) {
+      emitAuthLogout()
+      // redirect to login without importing react-router
+      if (typeof window !== 'undefined') {
+        const atLogin = window.location.pathname.startsWith('/admin/login')
+        if (!atLogin) window.location.href = '/admin/login'
+      }
+    }
+    return Promise.reject(err)
+  }
 )
-Input.displayName = 'Input'
-export default Input
-TSX
+`
+  fs.writeFileSync(p, s)
+  console.log('Added response interceptor to src/config/api.ts')
+} else {
+  console.log('Response interceptor already present in src/config/api.ts')
+}
+JS
 
-cat > src/components/ui/card.tsx <<'TSX'
-import { ReactNode } from 'react'
-export function Card({ children, className='' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-border bg-card shadow-soft ${className}`}>{children}</div>
-}
-export function CardHeader({ children }: { children: ReactNode }) {
-  return <div className="p-5 border-b border-border">{children}</div>
-}
-export function CardTitle({ children }: { children: ReactNode }) {
-  return <h3 className="text-lg font-semibold">{children}</h3>
-}
-export function CardContent({ children, className='' }: { children: ReactNode; className?: string }) {
-  return <div className={`p-5 ${className}`}>{children}</div>
-}
-TSX
-
-# --- simple pagination hook used by list pages ---
-cat > src/hooks/usePagination.ts <<'TS'
-import { useSearchParams } from 'react-router-dom'
-
-export function usePagination(defaultPageSize = 10) {
-  const [sp, setSp] = useSearchParams()
-  const page = Math.max(parseInt(sp.get('page') || '1', 10) || 1, 1)
-  const pageSize = Math.max(parseInt(sp.get('pageSize') || String(defaultPageSize), 10) || defaultPageSize, 1)
-  function set(nextPage: number) {
-    sp.set('page', String(nextPage))
-    sp.set('pageSize', String(pageSize))
-    setSp(sp, { replace: true })
-  }
-  function setSize(nextSize: number) {
-    sp.set('page', '1')
-    sp.set('pageSize', String(nextSize))
-    setSp(sp, { replace: true })
-  }
-  return { page, pageSize, set, setSize }
-}
-TS
-
-echo "✅ Patch applied. Now restart dev server."
+echo "✅ Phase 3 auth patch applied."
