@@ -1,0 +1,2 @@
+.prose h2 { @apply text-2xl md:text-3xl font-bold; }
+.prose p  { @apply text-gray-700; }
