@@ -27,6 +27,8 @@ import AdminGrantsPage from "../admin/grants/AdminGrantsPage"
 import AdminPatentsPage from "../admin/patents/AdminPatentsPage"
 import AdminCertificationsPage from "../admin/certifications/AdminCertificationsPage"
 import AdminProfilePage from "../admin/profile/AdminProfilePage"
+import AdminArticleNewPage from "@/admin/articles/AdminArticleNewPage"
+import AdminArticleEditPage from "@/admin/articles/AdminArticleEditPage"
 
 export default function RoutesIndex() {
   return (
@@ -61,7 +63,9 @@ export default function RoutesIndex() {
         >
           <Route index element={<DashboardPage />} />
           <Route path="articles" element={<AdminArticlesPage />} />
-          <Route path="publications" element={<AdminPublicationsPage />} />
+          <Route path="articles/new" element={<AdminArticleNewPage />} />
+          <Route path="articles/:slug" element={<AdminArticleEditPage mode="create" />} />
+          <Route path="publications" element={<AdminPublicationsPage mode="edit" />} />
           <Route path="grants" element={<AdminGrantsPage />} />
           <Route path="patents" element={<AdminPatentsPage />} />
           <Route path="certifications" element={<AdminCertificationsPage />} />
