@@ -1,6 +1,9 @@
 import axios from 'axios'
 import { API_BASE } from './env'
 
+
+import { emitAuthLogout } from '@/lib/authBus'
+
 export type Envelope<T> = { success: boolean; data: T; meta?: any; message?: string }
 export type EnvelopeOk<T> = { success: true; data: T; meta?: any }
 
@@ -44,20 +47,21 @@ export async function getListOk<T>(
 }
 
 
-import { emitAuthLogout } from '@/lib/authBus'
-
 http.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err?.response?.status
-    if (status === 401) {
-      emitAuthLogout()
-      // redirect to login without importing react-router
-      if (typeof window !== 'undefined') {
-        const atLogin = window.location.pathname.startsWith('/admin/login')
-        if (!atLogin) window.location.href = '/admin/login'
+    if (status === 401 && typeof window !== 'undefined') {
+      const path = window.location.pathname + window.location.search
+      const atLogin = window.location.pathname.startsWith('/admin/login')
+      if (!atLogin) {
+        const params = new URLSearchParams(window.location.search)
+        // if next is already present, keep it; else set it
+        const next = params.get('next') || encodeURIComponent(path)
+        window.location.href = `/admin/login?next=${next}`
       }
     }
     return Promise.reject(err)
   }
 )
+

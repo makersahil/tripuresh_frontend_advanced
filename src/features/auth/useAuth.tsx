@@ -20,28 +20,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Load current user if token exists
+  // Boot: try to load /auth/me if we have a token
   useEffect(() => {
     let active = true
-    async function boot() {
-      if (!token) { setUser(null); setLoading(false); return }
+    ;(async () => {
+      if (!token) {
+        setUser(null)
+        setLoading(false)
+        return
+      }
       try {
         setLoading(true)
         const u = await me()
-        if (active) setUser(u)
-      } catch {
-        // invalid token -> clear
-        if (active) { localStorage.removeItem('admin_token'); setToken(null); setUser(null) }
+        if (active) {
+          setUser(u)
+          console.log('[auth] me() ok:', u)
+        }
+      } catch (e) {
+        // Do NOT delete token here; let interceptor handle 401 on demand.
+        if (active) {
+          setUser(null)
+          console.warn('[auth] me() failed, keeping token for now', e)
+        }
       } finally {
         if (active) setLoading(false)
       }
-    }
-    boot()
+    })()
     return () => { active = false }
   }, [token])
 
-  // Respond to global 401 (from axios interceptor)
+  // Global 401 logout
   useEffect(() => onAuthLogout(() => {
+    console.warn('[auth] global logout')
     localStorage.removeItem('admin_token')
     setToken(null)
     setUser(null)
@@ -51,8 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const t = await apiLogin({ email, password })
     localStorage.setItem('admin_token', t)
     setToken(t)
-    const u = await me()
-    setUser(u)
+    try {
+      const u = await me()
+      setUser(u)
+      console.log('[auth] login -> me() ok')
+    } catch (e) {
+      console.warn('[auth] login -> me() failed', e)
+      // still proceed; guard lets them in, interceptor will catch any 401
+    }
   }
 
   function logout() {

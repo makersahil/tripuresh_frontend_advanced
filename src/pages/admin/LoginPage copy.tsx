@@ -1,24 +1,19 @@
 import { FormEvent, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/useAuth";
 import Input from "@/components/ui/input";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [email, setEmail] = useState("admin@tripuresh.in");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const from = (location.state as any)?.from?.pathname || "/admin"; // default dashboard
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     try {
       setBusy(true); setError(null);
-      await login(email, password);               // ✅ calls API & stores token
-      navigate(from, { replace: true });      // ✅ go to dashboard
+      await login(email, password);
     } catch (err: any) {
       setError(err?.message || "Login failed");
     } finally {
