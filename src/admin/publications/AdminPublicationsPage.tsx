@@ -14,6 +14,7 @@ import ConfirmDialog from '@/components/overlays/ConfirmDialog'
 import PublicationForm from './PublicationForm'
 import { createPublication, updatePublication, deletePublication, } from './adminApi'
 
+
 export default function AdminPublicationsPage() {
   // filters
   const [q, setQ] = useState('')
@@ -60,8 +61,7 @@ export default function AdminPublicationsPage() {
     }
   }
 
-  useEffect(() => { load() }, [params])
-
+  useEffect(() => { load() }, [params.page, params.q, params.year, params.type])
   function openCreate() {
     setEditing(null)
     setOpen(true)
@@ -125,7 +125,7 @@ export default function AdminPublicationsPage() {
               onChange={(e) => { setPage(1); setYear(e.target.value.replace(/[^\d]/g, '')) }}
             />
             <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={() => load()}>Refresh</Button>
+              <Button type="button" variant="secondary" onClick={() => load()}>Refresh</Button>
               <Button onClick={openCreate}>New</Button>
             </div>
           </div>

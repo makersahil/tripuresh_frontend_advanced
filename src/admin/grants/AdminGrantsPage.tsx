@@ -9,6 +9,7 @@ import GrantForm from './GrantForm'
 import { createGrant, updateGrant, deleteGrant } from './adminApi'
 import ConfirmDialog from '@/components/overlays/ConfirmDialog'
 
+
 type PageMeta = { page: number; pages: number; total: number; pageSize: number }
 
 export default function AdminGrantsPage() {
@@ -49,8 +50,7 @@ export default function AdminGrantsPage() {
     }
   }
 
-  useEffect(() => { load() }, [params.page, params.q, params.year])
-
+  useEffect(() => { load() }, [params.page, params.q, params.year, params.type])
   function openCreate() {
     setEditing(null)
     setOpen(true)
@@ -116,6 +116,9 @@ export default function AdminGrantsPage() {
             onChange={e => { setPage(1); setYear(e.target.value) }}
             className="w-28"
           />
+          <Button type="button" variant="secondary" onClick={() => load()}>
+            Refresh
+          </Button>
           <Button onClick={openCreate}>New grant</Button>
         </div>
       </div>

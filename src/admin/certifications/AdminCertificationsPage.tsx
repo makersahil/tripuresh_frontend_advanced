@@ -49,7 +49,7 @@ export default function AdminCertificationsPage() {
     }
   }
 
-  useEffect(() => { load() }, [params.page, params.q, params.year])
+useEffect(() => { load() }, [params.page, params.q, params.year, params.type])
 
   function openCreate() {
     setEditing(null)
@@ -115,6 +115,9 @@ export default function AdminCertificationsPage() {
             onChange={e => { setPage(1); setYear(e.target.value) }}
             className="w-28"
           />
+          <Button type="button" variant="secondary" onClick={() => load()}>
+  Refresh
+</Button>
           <Button onClick={openCreate}>New certification</Button>
         </div>
       </div>
