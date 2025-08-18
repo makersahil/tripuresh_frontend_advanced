@@ -101,7 +101,7 @@ export default function AdminPatentsPage() {
       <div className="mb-5 flex flex-wrap items-end gap-2">
         <div className="grid gap-1">
           <h1 className="text-xl font-semibold">Patents</h1>
-          <p className="text-sm text-muted-foreground">Manage patents.</p>
+          <p className="text-sm text-muted-foreground">Create, edit, and remove certifications.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Input

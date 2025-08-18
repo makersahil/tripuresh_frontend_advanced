@@ -18,37 +18,26 @@ export type ArticleInput = {
 
 const ADMIN_BASE = '/api/v1/admin'
 
-function normalizeHttpUrl(u?: string) {
-  if (!u) return undefined
-  const t = u.trim()
-  if (!t) return undefined
-  return /^https?:\/\//i.test(t) ? t : `https://${t}`
-}
-
-function compact<T extends Record<string, any>>(obj: T): T {
-  return Object.fromEntries(
-    Object.entries(obj)
-      .map(([k, v]) => {
-        if (k === 'link' || k === 'doi') return [k, normalizeHttpUrl(v as string)]
-        if (k === 'tags' && Array.isArray(v)) return [k, v.filter(Boolean)]
-        return [k, v]
-      })
-      .filter(([_, v]) => {
-        if (v === '' || v === null || v === undefined) return false
-        if (Array.isArray(v) && v.length === 0) return false
-        return true
-      })
-  ) as T
+// Drop undefined/empty fields to keep payloads clean
+function compact<T extends Record<string, any>>(obj: T): Partial<T> {
+  const out: Record<string, any> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null) continue
+    if (Array.isArray(v) && v.length === 0) continue
+    if (typeof v === 'string' && v.trim() === '') continue
+    out[k] = v
+  }
+  return out as Partial<T>
 }
 
 export async function createArticle(input: ArticleInput): Promise<Article> {
   const res = await http.post(`${ADMIN_BASE}/articles`, compact(input))
-  return res.data?.data as Article
+  return (res?.data?.data ?? res?.data ?? res) as Article
 }
 
 export async function updateArticle(id: string, input: ArticleInput): Promise<Article> {
   const res = await http.put(`${ADMIN_BASE}/articles/${id}`, compact(input))
-  return res.data?.data as Article
+  return (res?.data?.data ?? res?.data ?? res) as Article
 }
 
 export async function deleteArticle(id: string): Promise<void> {

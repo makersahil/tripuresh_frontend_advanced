@@ -18,37 +18,35 @@ export default function AdminArticlesPage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const params = useMemo(() => {
-    const p: Record<string, any> = { page, pageSize: 10 }
-    if (q.trim()) p.q = q.trim()
-    if (year.trim()) p.year = Number(year)
-    return p
-  }, [q, year, page])
+  const query = useMemo(() => ({
+    q: q || undefined,
+    year: year ? Number(year) : undefined,
+    page,
+    pageSize: 10,
+  }), [q, year, page])
 
   async function load() {
     try {
       setBusy(true); setErr(null)
-      const { items, meta } = await getListOk<Article>('/articles', params)
+      const res = await getListOk<Article>('/articles', query)
+      // Support both {items, meta} and direct array shapes
+      const items = (res as any)?.items ?? (res as any)?.data?.items ?? (Array.isArray(res) ? res : [])
+      const meta  = (res as any)?.meta  ?? (res as any)?.data?.meta  ?? null
       setItems(items)
       setMeta(meta)
     } catch (e: any) {
-      console.error('[articles list error]', e?.response?.data || e)
       setErr(e?.response?.data?.message || e?.message || 'Failed to load articles')
     } finally {
       setBusy(false)
     }
   }
 
-  useEffect(() => { load() }, [params.page, params.q, params.year])
-
-  function goNew() {
-    nav('/admin/articles/new')
-  }
+  useEffect(() => { load() }, [query.page, query.q, query.year, query.pageSize])
 
   function goEdit(row: Article) {
-    // pass row and also provide slug in URL for refresh rehydrate
+    // Use slug in route (refresh-safe), and pass the partial row for instant paint
     const slug = (row as any).slug
-    nav(`/admin/articles/${row.id}${slug ? `?slug=${encodeURIComponent(slug)}` : ''}`, { state: { row } })
+    nav(`/admin/articles/${encodeURIComponent(slug)}`, { state: { row } })
   }
 
   return (
@@ -56,45 +54,39 @@ export default function AdminArticlesPage() {
       <div className="mb-5 flex flex-wrap items-end gap-2">
         <div className="grid gap-1">
           <div className="text-xl font-semibold">Articles</div>
-          <p className="text-sm text-muted-foreground">Create, edit, and remove research articles.</p>
+          <p className="text-sm text-muted-foreground">Create, edit, and manage research articles.</p>
         </div>
+
         <div className="ml-auto flex items-center gap-2">
           <Input
             placeholder="Search…"
             value={q}
             onChange={e => { setPage(1); setQ(e.target.value) }}
-            className="w-56"
           />
           <Input
             placeholder="Year"
             inputMode="numeric"
             value={year}
             onChange={e => { setPage(1); setYear(e.target.value) }}
-            className="w-28"
           />
-          <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => load()}>Refresh</Button>
-
-          <Button onClick={goNew}>New article</Button>
-          </div>
+          <Button type="button" variant="secondary" onClick={() => load()}>Refresh</Button>
+          <Button onClick={() => nav('/admin/articles/new')}>New Article</Button>
         </div>
       </div>
 
       {err && (
-        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-          {err}
-        </div>
+        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{err}</div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border">
-        <table className="min-w-full text-sm">
-          <thead className="bg-muted/40">
-            <tr>
-              <th className="px-4 py-2 text-left">Title</th>
-              <th className="px-4 py-2 text-left">Journal</th>
-              <th className="px-4 py-2 text-left">Year</th>
-              <th className="px-4 py-2 text-left">Published</th>
-              <th className="px-4 py-2 text-right">Actions</th>
+      <div className="overflow-x-auto rounded-2xl border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr className="[&>th]:px-4 [&>th]:py-2 [&>th]:text-left">
+              <th>Title</th>
+              <th>Journal</th>
+              <th>Year</th>
+              <th>Published</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -114,7 +106,6 @@ export default function AdminArticlesPage() {
                 <td className="px-4 py-2 text-right">
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" onClick={() => goEdit(row)}>Edit</Button>
-                    {/* Delete from list would need admin DELETE; safer to do it from the edit page or add here later */}
                   </div>
                 </td>
               </tr>
