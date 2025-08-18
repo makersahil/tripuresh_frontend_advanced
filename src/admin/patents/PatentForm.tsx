@@ -31,8 +31,13 @@ export default function PatentForm({
   // shape inventors from initial (public detail returns embedded people on some builds)
   const [invFirst, setInvFirst] = useState('')
   const [invLast, setInvLast] = useState('')
+
   const [inventors, setInventors] = useState<InventorInput[]>(
-    ((initial as any)?.inventors ?? []).map((i: any) => ({ firstName: i.firstName, lastName: i.lastName })) ?? []
+    (
+      (initial as any)?.inventorsList ??
+      (initial as any)?.inventors ??
+      []
+    ).map((i: any) => ({ firstName: i.firstName, lastName: i.lastName }))
   )
 
   const [busy, setBusy] = useState(false)
@@ -47,7 +52,13 @@ export default function PatentForm({
     setLink(initial.link ?? '')
     setLegacyInventors(initial.legacyInventors ?? '')
     setPublished(initial.published ?? true)
-    setInventors(((initial as any)?.inventors ?? []).map((i: any) => ({ firstName: i.firstName, lastName: i.lastName })))
+    setInventors(
+      (
+        (initial as any)?.inventorsList ??
+        (initial as any)?.inventors ??
+        []
+      ).map((i: any) => ({ firstName: i.firstName, lastName: i.lastName }))
+    )
   }, [initial?.id])
 
   const canSubmit = useMemo(() => {

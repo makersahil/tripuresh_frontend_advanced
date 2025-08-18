@@ -7,6 +7,7 @@ import Input from '@/components/ui/input'
 import Modal from '@/components/overlays/Modal'
 import CertificationForm from './CertificationForm'
 import { createCertification, updateCertification, deleteCertification } from './adminApi'
+import ConfirmDialog from '@/components/overlays/ConfirmDialog'
 
 type PageMeta = { page: number; pages: number; total: number; pageSize: number }
 
@@ -21,6 +22,11 @@ export default function AdminCertificationsPage() {
   const [editing, setEditing] = useState<Certification | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [busyDelete, setBusyDelete] = useState(false)
+  const [target, setTarget] = useState<Certification | null>(null)
+
 
   const params = useMemo(() => {
     const p: Record<string, any> = { page, pageSize: 10 }
@@ -68,6 +74,24 @@ export default function AdminCertificationsPage() {
     if (!confirm(`Delete certification "${row.title}"? This cannot be undone.`)) return
     await deleteCertification(row.id)
     await load()
+  }
+
+  function askDelete(row: Certification) {
+    setTarget(row)
+    setConfirmOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!target?.id) return
+    try {
+      setBusyDelete(true)
+      await deleteCertification(target.id)
+      setConfirmOpen(false)
+      setTarget(null)
+      await load() // reuse your existing fetch/list loader
+    } finally {
+      setBusyDelete(false)
+    }
   }
 
   return (
@@ -130,7 +154,7 @@ export default function AdminCertificationsPage() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" onClick={() => openEdit(row)}>Edit</Button>
-                      <Button variant="destructive" onClick={() => handleDelete(row)}>Delete</Button>
+                      <Button variant="destructive" onClick={() => askDelete(row)}>Delete</Button>
                     </div>
                   </td>
                 </tr>
@@ -174,6 +198,20 @@ export default function AdminCertificationsPage() {
           onSave={handleSave}
         />
       </Modal>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        busy={busyDelete}
+        title="Delete certification?"
+        message={
+          target ? <>This will permanently remove <strong>{target.title}</strong>.</> : 'Delete?'
+        }
+        confirmText="Delete"
+      />
+
+
     </section>
   )
 }

@@ -4,6 +4,8 @@ import type { Patent } from '@/lib/types'
 import { getListOk } from '@/config/api'
 import Input from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import ConfirmDialog from '@/components/overlays/ConfirmDialog'
+import { deletePatent } from './adminApi'
 import Pagination from '@/components/shared/Pagination' // your simple Prev/Next pager
 
 type Meta = { page: number; pages: number; total: number; pageSize: number }
@@ -20,6 +22,10 @@ export default function AdminPatentsPage() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [busyDelete, setBusyDelete] = useState(false)
+  const [target, setTarget] = useState<Patent | null>(null)
+
 
   function updateSearch(next: Partial<{ q: string; year: string; page: number }>) {
     const n = new URLSearchParams(sp)
@@ -31,29 +37,64 @@ export default function AdminPatentsPage() {
 
   useEffect(() => {
     let active = true
-    ;(async () => {
-      try {
-        setBusy(true); setErr(null)
-        const { items, meta } = await getListOk<Patent>('/patents', {
-          q: q || undefined,
-          year: year ? Number(year) : undefined,
-          page,
-          pageSize: 10,
-        })
-        if (!active) return
-        setRows(items)
-        setMeta(meta as any)
-      } catch (e: any) {
-        if (!active) return
-        setErr(e?.response?.data?.message || e?.message || 'Failed to load patents')
-      } finally {
-        if (active) setBusy(false)
-      }
-    })()
+      ; (async () => {
+        try {
+          setBusy(true); setErr(null)
+          const { items, meta } = await getListOk<Patent>('/patents', {
+            q: q || undefined,
+            year: year ? Number(year) : undefined,
+            page,
+            pageSize: 10,
+          })
+          if (!active) return
+          setRows(items)
+          setMeta(meta as any)
+        } catch (e: any) {
+          if (!active) return
+          setErr(e?.response?.data?.message || e?.message || 'Failed to load patents')
+        } finally {
+          if (active) setBusy(false)
+        }
+      })()
     return () => { active = false }
   }, [q, year, page])
 
   const hasRows = useMemo(() => rows.length > 0, [rows.length])
+
+  function goEdit(row: Patent) {
+    // Mirror how other sections navigate to edit
+    nav(`/admin/patents/${row.slug}`, { state: { row } })
+  }
+
+  async function handleDelete(row: Patent) {
+    if (!row?.id) return
+    if (!confirm(`Delete patent "${row.title}"? This cannot be undone.`)) return
+    try {
+      await deletePatent(row.id)
+      await load() // reuse existing loader in this file
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || 'Failed to delete')
+    }
+  }
+
+  function askDelete(row: Patent) {
+    setTarget(row)
+    setConfirmOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!target?.id) return
+    try {
+      setBusyDelete(true)
+      await deletePatent(target.id)
+      setConfirmOpen(false)
+      setTarget(null)
+      await load() // you already have this loader in the page
+    } finally {
+      setBusyDelete(false)
+    }
+  }
+
 
   return (
     <section className="container py-8">
@@ -107,14 +148,13 @@ export default function AdminPatentsPage() {
                   <td>{r.patentNo}</td>
                   <td>{r.year}</td>
                   <td>{r.published ? 'Yes' : 'No'}</td>
-                  <td className="text-right">
-                    <Link
-                      to={`/admin/patents/${r.slug}`}
-                      state={{ row: r }}
-                      className="text-primary hover:underline"
-                    >
-                      Edit
-                    </Link>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" onClick={() => goEdit(r)}>Edit</Button>
+                      <Button variant="destructive" onClick={() => askDelete(r)}>
+                        Delete
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -130,6 +170,18 @@ export default function AdminPatentsPage() {
           onChange={(next) => updateSearch({ page: next })}
         />
       )}
+      <ConfirmDialog
+  open={confirmOpen}
+  onCancel={() => setConfirmOpen(false)}
+  onConfirm={confirmDelete}
+  busy={busyDelete}
+  title="Delete patent?"
+  message={
+    target ? <>This will permanently remove <strong>{target.title}</strong>.</> : 'Delete?'
+  }
+  confirmText="Delete"
+/>
+
     </section>
   )
 }

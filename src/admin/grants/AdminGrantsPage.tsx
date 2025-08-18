@@ -7,6 +7,7 @@ import Input from '@/components/ui/input'
 import Modal from '@/components/overlays/Modal'
 import GrantForm from './GrantForm'
 import { createGrant, updateGrant, deleteGrant } from './adminApi'
+import ConfirmDialog from '@/components/overlays/ConfirmDialog'
 
 type PageMeta = { page: number; pages: number; total: number; pageSize: number }
 
@@ -21,6 +22,11 @@ export default function AdminGrantsPage() {
   const [editing, setEditing] = useState<ResearchGrant | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [busyDelete, setBusyDelete] = useState(false)
+  const [target, setTarget] = useState<Grant | null>(null)
+
 
   const params = useMemo(() => {
     const p: Record<string, any> = { page, pageSize: 10 }
@@ -69,6 +75,25 @@ export default function AdminGrantsPage() {
     await deleteGrant(row.id)
     await load()
   }
+
+  function askDelete(row: Grant) {
+    setTarget(row)
+    setConfirmOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!target?.id) return
+    try {
+      setBusyDelete(true)
+      await deleteGrant(target.id)
+      setConfirmOpen(false)
+      setTarget(null)
+      await load() // reuse your existing list loader
+    } finally {
+      setBusyDelete(false)
+    }
+  }
+
 
   return (
     <section className="container py-8">
@@ -130,7 +155,7 @@ export default function AdminGrantsPage() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" onClick={() => openEdit(row)}>Edit</Button>
-                      <Button variant="destructive" onClick={() => handleDelete(row)}>Delete</Button>
+                      <Button variant="destructive" onClick={() => askDelete(row)}>Delete</Button>
                     </div>
                   </td>
                 </tr>
@@ -174,6 +199,18 @@ export default function AdminGrantsPage() {
           onSave={handleSave}
         />
       </Modal>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        busy={busyDelete}
+        title="Delete grant?"
+        message={
+          target ? <>This will permanently remove <strong>{target.title}</strong>.</> : 'Delete?'
+        }
+        confirmText="Delete"
+      />
     </section>
   )
 }
