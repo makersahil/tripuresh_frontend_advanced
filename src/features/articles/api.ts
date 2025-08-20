@@ -1,5 +1,5 @@
 import { getListOk, getOk } from '@/config/api'
-import type { Article, PageMeta } from '@/lib/types'
+import type { Article } from '@/lib/types'
 
 export async function listArticles(params: { page?: number; pageSize?: number; sort?: string; q?: string; year?: number } = {}) {
   const { items, meta } = await getListOk<Article>('/articles', params)
